@@ -6,6 +6,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "generate:data": "node scripts/generate-data.js",
     "lint": "eslint",
     "test": "jest"
   },
