@@ -34,8 +34,12 @@ export function parseFlexibleDate(dateStr?: string): number | undefined {
     const month = parseInt(parts[1], 10) - 1;
     let year = parseInt(parts[2], 10);
     if (year < 100) year = year > 30 ? 1900 + year : 2000 + year;
-    const ts = new Date(Date.UTC(year, month, day)).getTime();
-    return Number.isNaN(ts) ? undefined : ts;
+    const date = new Date(Date.UTC(year, month, day));
+    if (Number.isNaN(date.getTime())) return undefined;
+    if (date.getUTCDate() !== day || date.getUTCMonth() !== month || date.getUTCFullYear() !== year) {
+      return undefined;
+    }
+    return date.getTime();
   }
 
   // Try ISO / RFC parse

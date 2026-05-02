@@ -24,8 +24,11 @@ function SearchApp() {
   const dateTo = searchParams.get('dateTo') || '';
   const restrictions = searchParams.get('restrictions') ? searchParams.get('restrictions')!.split(',') : [];
   const sortBy = searchParams.get('sortBy') || '';
-  const page = parseInt(searchParams.get('page') || '1', 10);
-  const pageSize = parseInt(searchParams.get('pageSize') || '10', 10);
+  let page = parseInt(searchParams.get('page') || '1', 10);
+  if (!isFinite(page) || page < 1) page = 1;
+  let pageSize = parseInt(searchParams.get('pageSize') || '10', 10);
+  if (!isFinite(pageSize) || pageSize < 1) pageSize = 10;
+  pageSize = Math.min(100, pageSize);
 
   // Maintain local state ONLY for the search input to allow smooth, debounceable typing
   const [localQ, setLocalQ] = useState(urlQ);

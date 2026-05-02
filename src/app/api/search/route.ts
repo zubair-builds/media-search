@@ -22,7 +22,8 @@ export async function GET(request: NextRequest) {
     ? sortByParam 
     : undefined;
 
-  const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+  let page = parseInt(searchParams.get('page') || '1', 10);
+  if (!isFinite(page) || page < 1) page = 1;
   let pageSize = parseInt(searchParams.get('pageSize') || '10', 10);
   if (!isFinite(pageSize) || pageSize < 1) pageSize = 10;
   // Defensive cap to prevent OOM/abuse

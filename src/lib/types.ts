@@ -1,10 +1,10 @@
 export interface RawMediaItem {
-  suchtext: string;
-  bildnummer: string;
-  fotografen: string;
-  datum: string;
-  hoehe: string;
-  breite: string;
+  suchtext: string; // search text
+  bildnummer: string; // image number
+  fotografen: string; // photographers
+  datum: string; // date
+  hoehe: string; // height
+  breite: string; // width
 }
 
 export interface MediaItem {

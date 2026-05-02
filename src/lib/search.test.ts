@@ -1,5 +1,5 @@
 import { describe, expect, test, beforeEach } from '@jest/globals';
-import { searchEngine, recordAnalytics, analyticsState } from './search';
+import { searchEngine, recordAnalytics, analyticsState, sanitizeQuery, parseFlexibleDate } from './search';
 
 describe('Search Engine Preprocessing & Core Logic', () => {
   test('should parse dates to unix timestamp correctly', () => {
@@ -72,5 +72,36 @@ describe('Analytics Tracking', () => {
     expect(analyticsState.totalQueryTimeMs).toBe(30);
     expect(analyticsState.keywordCounts.get('jackson')).toBe(2);
     expect(analyticsState.keywordCounts.get('football')).toBe(1);
+  });
+});
+
+describe('Sanitize Query Helper', () => {
+  test('should strip control characters and normalize spaces', () => {
+    expect(sanitizeQuery('  hello\nworld\r  ')).toBe('hello world');
+  });
+
+  test('should strip angle brackets and backticks', () => {
+    expect(sanitizeQuery('test <script> `backtick` \\slash')).toBe('test script backtick slash');
+  });
+
+  test('should limit length to 200 characters', () => {
+    const longInput = 'a'.repeat(250);
+    expect(sanitizeQuery(longInput)?.length).toBe(200);
+  });
+});
+
+describe('Parse Flexible Date Helper', () => {
+  test('should parse DD.MM.YYYY and DD.MM.YY format', () => {
+    expect(parseFlexibleDate('15.08.2025')).toBe(Date.UTC(2025, 7, 15));
+    expect(parseFlexibleDate('15.08.25')).toBe(Date.UTC(2025, 7, 15));
+  });
+
+  test('should parse standard ISO / RFC formats', () => {
+    expect(parseFlexibleDate('2026-05-02')).toBe(Date.parse('2026-05-02'));
+  });
+
+  test('should return undefined for invalid dates', () => {
+    expect(parseFlexibleDate('invalid-date')).toBeUndefined();
+    expect(parseFlexibleDate('35.08.2025')).toBeUndefined();
   });
 });

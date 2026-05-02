@@ -80,7 +80,11 @@ export const Pagination: React.FC<PaginationProps> = ({
                 <button
                   key={pageNum}
                   ref={el => {
-                    paginationButtonRefs.current.set(pageNum as number, el);
+                    if (el) {
+                      paginationButtonRefs.current.set(pageNum as number, el);
+                    } else {
+                      paginationButtonRefs.current.delete(pageNum as number);
+                    }
                   }}
                   onClick={() => onPageChange(pageNum as number)}
                   className={`w-10 h-10 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
