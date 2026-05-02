@@ -56,6 +56,8 @@ function SearchApp() {
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const analyticsCloseButtonRef = useRef<HTMLButtonElement>(null);
+  const paginationButtonRefs = useRef(new Map<number, HTMLButtonElement | null>());
+  const paginationRegionRef = useRef<HTMLDivElement>(null);
 
   // Fetch facets on mount
   useEffect(() => {
@@ -127,11 +129,6 @@ function SearchApp() {
 
   // Update URL and fetch data whenever filters change
   useEffect(() => {
-    // Input Guard: If search term is 1 or 2 characters, do nothing
-    if (debouncedQ.trim().length > 0 && debouncedQ.trim().length < 3) {
-      return;
-    }
-
     const params = new URLSearchParams();
     if (debouncedQ) params.set('q', debouncedQ);
     if (credit) params.set('credit', credit);
@@ -142,8 +139,8 @@ function SearchApp() {
     if (page > 1) params.set('page', page.toString());
     if (pageSize !== 10) params.set('pageSize', pageSize.toString());
 
-    // Update URL without reloading the page
-    router.push(`/?${params.toString()}`);
+    // Update URL without adding a new history entry for every filter tweak
+    router.replace(`/?${params.toString()}`);
 
     // Fetch Search Results
     setLoading(true);
@@ -182,6 +179,16 @@ function SearchApp() {
       prevDebouncedQ.current = debouncedQ;
     }
   }, [debouncedQ]);
+
+  useEffect(() => {
+    const activeButton = paginationButtonRefs.current.get(page);
+    if (activeButton) {
+      activeButton.focus();
+      return;
+    }
+
+    paginationRegionRef.current?.focus();
+  }, [page, result?.totalPages]);
 
   // Keyword in Context (KWIC) Highlighter
   const highlightText = (text: string, keyword: string) => {
@@ -673,7 +680,12 @@ function SearchApp() {
 
                 {/* Pagination Controls */}
                 {result.totalPages > 1 && (
-                  <div className="flex flex-wrap justify-center items-center gap-2">
+                  <div
+                    ref={paginationRegionRef}
+                    className="flex flex-wrap justify-center items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded-lg"
+                    tabIndex={-1}
+                    aria-label="Pagination controls"
+                  >
                     <button
                       onClick={() => setPage(p => Math.max(1, p - 1))}
                       disabled={page === 1}
@@ -687,13 +699,16 @@ function SearchApp() {
                     </button>
 
                     {/* Page Numbers */}
-                    <div className="flex items-center space-x-1">
+                    <div className="flex items-center space-x-1" role="list" aria-label="Page numbers">
                       {getPageNumbers().map((pageNum, idx) => (
                         pageNum === '...' ? (
                           <span key={`dots-${idx}`} className="px-2 text-gray-400">...</span>
                         ) : (
                           <button
                             key={pageNum}
+                            ref={el => {
+                              paginationButtonRefs.current.set(pageNum as number, el);
+                            }}
                             onClick={() => setPage(pageNum as number)}
                             className={`w-10 h-10 flex items-center justify-center rounded-lg text-sm font-medium transition-colors ${
                               page === pageNum
@@ -701,8 +716,10 @@ function SearchApp() {
                                 : 'border border-gray-200 text-gray-700 bg-white hover:border-gray-300 hover:bg-gray-50'
                             }`}
                             aria-current={page === pageNum ? 'page' : undefined}
-                            aria-label={`Go to page ${pageNum}`}
+                            aria-label={`Go to page ${pageNum}${page === pageNum ? ', current page' : ''}`}
                             aria-pressed={page === pageNum}
+                            aria-setsize={result.totalPages}
+                            aria-posinset={typeof pageNum === 'number' ? pageNum : undefined}
                           >
                             {pageNum}
                           </button>
@@ -714,7 +731,7 @@ function SearchApp() {
                       onClick={() => setPage(p => Math.min(result.totalPages, p + 1))}
                       disabled={page === result.totalPages}
                       className="inline-flex items-center space-x-2 px-4 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 hover:border-gray-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-white transition-colors"
-                      aria-label="Next page"
+                      aria-label={`Next page, currently on page ${page} of ${result.totalPages}`}
                     >
                       <span>Next</span>
                       <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

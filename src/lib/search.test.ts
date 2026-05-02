@@ -28,6 +28,12 @@ describe('Search Engine Preprocessing & Core Logic', () => {
     const res = searchEngine.search({ q: 'der' });
     expect(res.items.length).toBe(0);
   });
+
+  test('should match accented metadata with ASCII queries', () => {
+    const res = searchEngine.search({ q: 'Munchen' });
+    expect(res.items.length).toBeGreaterThan(0);
+    expect(res.items[0].suchtext).toContain('München');
+  });
 });
 
 describe('Search Filters & Relevance', () => {
