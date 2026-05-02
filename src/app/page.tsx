@@ -101,7 +101,7 @@ function SearchApp() {
 
   // Fetch Search Results directly based on the URL searchParams
   useEffect(() => {
-    setLoading(true);
+    queueMicrotask(() => setLoading(true));
     fetch(`/api/search?${searchParams.toString()}`)
       .then(res => {
         if (!res.ok) throw new Error('Search failed');
@@ -186,7 +186,7 @@ function SearchApp() {
         {!loading && result && (
           <div className="text-sm text-gray-500 mb-6 pl-1">
             Found {result.total.toLocaleString()} results
-            {urlQ && <> for <span className="font-semibold text-gray-900">'{urlQ}'</span></>}
+            {urlQ && <> for <span className="font-semibold text-gray-900">&apos;{urlQ}&apos;</span></>}
             {result.executionTimeMs !== undefined && ` (${result.executionTimeMs} ms)`}
           </div>
         )}

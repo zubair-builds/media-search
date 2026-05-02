@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef } from 'react';
 import { getPageNumbers } from '@/lib/utils';
 
 interface PaginationProps {
@@ -83,7 +83,6 @@ export const Pagination: React.FC<PaginationProps> = ({
                   aria-current={page === pageNum ? 'page' : undefined}
                   aria-label={`Go to page ${pageNum}${page === pageNum ? ', current page' : ''}`}
                   aria-pressed={page === pageNum}
-                  aria-setsize={totalPages}
                   aria-posinset={typeof pageNum === 'number' ? pageNum : undefined}
                 >
                   {pageNum}

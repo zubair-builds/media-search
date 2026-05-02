@@ -17,8 +17,10 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({ isOpen, onClose 
   useEffect(() => {
     if (!isOpen) return;
 
-    setAnalyticsLoading(true);
-    setAnalyticsError(null);
+    queueMicrotask(() => {
+      setAnalyticsLoading(true);
+      setAnalyticsError(null);
+    });
 
     fetch('/api/analytics')
       .then(res => {
