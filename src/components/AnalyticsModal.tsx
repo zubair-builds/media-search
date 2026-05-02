@@ -54,6 +54,18 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({ isOpen, onClose 
     }
   }, [isOpen]);
 
+  // Prevent background scrolling when modal is open
+  useEffect(() => {
+    if (isOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+
   if (!isOpen) return null;
 
   return (
@@ -68,7 +80,7 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({ isOpen, onClose 
         <div className="flex items-start justify-between gap-4 border-b border-gray-100 px-6 py-5">
           <div>
             <h2 id="analytics-modal-title" className="text-xl font-semibold text-gray-900">Analytics Overview</h2>
-            <p className="mt-1 text-sm text-gray-500">Live search activity and keyword distribution</p>
+            <p className="mt-1 text-sm text-gray-500">Search activity and keyword distribution</p>
           </div>
           <button
             ref={analyticsCloseButtonRef}

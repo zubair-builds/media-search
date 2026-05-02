@@ -17,14 +17,13 @@ export const SearchControls: React.FC<SearchControlsProps> = ({
   setQ,
   searchInputRef,
   loading,
-  totalResults,
   sortBy,
   setSortBy,
 }) => {
   return (
     <div className="sticky top-0 z-20 pt-2 pb-6 bg-gradient-to-br from-slate-50/90 to-slate-100/90 backdrop-blur-md -mx-4 px-4 sm:-mx-6 sm:px-6 md:-mx-8 md:px-8">
       <div className="flex flex-col lg:flex-row gap-2 lg:gap-4 items-center bg-white rounded-xl border border-gray-200 shadow-sm p-1.5">
-        
+
         {/* Main Search Input */}
         <div className="relative flex-1 w-full">
           <label htmlFor="search-input" className="sr-only">Search</label>
@@ -48,9 +47,9 @@ export const SearchControls: React.FC<SearchControlsProps> = ({
             )}
             {!loading && (
               <>
-                <span className="text-xs text-gray-600 font-medium whitespace-nowrap hidden sm:inline">
-                  {totalResults.toLocaleString()} results
-                </span>
+                <kbd className="hidden sm:inline-flex items-center px-2.5 py-1 text-xs font-semibold text-gray-500 bg-gray-100 border border-gray-300 rounded-lg">
+                  <span className="text-sm">⌘K</span>
+                </kbd>
                 {q.length > 0 && (
                   <button
                     onClick={() => setQ('')}
@@ -64,11 +63,6 @@ export const SearchControls: React.FC<SearchControlsProps> = ({
                     </svg>
                   </button>
                 )}
-                {q.length === 0 && (
-                  <kbd className="hidden sm:inline-flex items-center px-2.5 py-1 text-xs font-semibold text-gray-500 bg-gray-100 border border-gray-300 rounded-lg">
-                    <span className="text-sm">⌘K</span>
-                  </kbd>
-                )}
               </>
             )}
           </div>
@@ -80,7 +74,7 @@ export const SearchControls: React.FC<SearchControlsProps> = ({
         {/* Sort Results Selector */}
         <div className="flex items-center justify-end w-full lg:w-auto gap-2 px-3 lg:pr-4 py-2 lg:py-0">
           <label htmlFor="sort-by" className="text-sm text-gray-500 font-medium whitespace-nowrap">Sort:</label>
-          <select 
+          <select
             id="sort-by"
             className="text-sm border-0 bg-transparent text-gray-900 font-medium hover:text-blue-600 focus:ring-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 cursor-pointer p-0 pr-6 rounded"
             value={sortBy}

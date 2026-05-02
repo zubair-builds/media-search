@@ -18,17 +18,6 @@ export const Pagination: React.FC<PaginationProps> = ({
   onPageSizeChange,
 }) => {
   const paginationButtonRefs = useRef(new Map<number, HTMLButtonElement | null>());
-  const paginationRegionRef = useRef<HTMLDivElement>(null);
-
-  // Autofocus onto the active page number button when navigating
-  useEffect(() => {
-    const activeButton = paginationButtonRefs.current.get(page);
-    if (activeButton) {
-      activeButton.focus();
-      return;
-    }
-    paginationRegionRef.current?.focus();
-  }, [page, totalPages]);
 
   if (totalPages === 0) return null;
 
@@ -54,7 +43,6 @@ export const Pagination: React.FC<PaginationProps> = ({
       {/* Pagination Controls */}
       {totalPages > 1 && (
         <div
-          ref={paginationRegionRef}
           className="flex flex-wrap justify-center items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 rounded-lg"
           tabIndex={-1}
           aria-label="Pagination controls"

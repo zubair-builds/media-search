@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
     const executionTimeMs = Date.now() - startTime;
     recordAnalytics(q, executionTimeMs);
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, executionTimeMs });
   } catch (error) {
     console.error('Search error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

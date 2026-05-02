@@ -33,10 +33,14 @@ function SearchApp() {
   // Maintain local state ONLY for the search input to allow smooth, debounceable typing
   const [localQ, setLocalQ] = useState(urlQ);
   const debouncedQ = useDebounce(localQ, 300);
+  const lastPushedQ = useRef(urlQ);
 
   // Sync back from URL if user uses browser history (back/forward buttons)
   useEffect(() => {
-    setLocalQ(urlQ);
+    if (urlQ !== lastPushedQ.current) {
+      setLocalQ(urlQ);
+      lastPushedQ.current = urlQ;
+    }
   }, [urlQ]);
 
   // Generic updater to modify URL params and trigger a React re-render cycle
@@ -60,6 +64,7 @@ function SearchApp() {
   // Push debounced search query to URL, resetting to page 1
   useEffect(() => {
     if (debouncedQ !== urlQ) {
+      lastPushedQ.current = debouncedQ;
       updateUrl({ q: debouncedQ, page: 1 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -176,6 +181,15 @@ function SearchApp() {
           isOpen={analyticsOpen}
           onClose={() => setAnalyticsOpen(false)}
         />
+
+        {/* Search Stats */}
+        {!loading && result && (
+          <div className="text-sm text-gray-500 mb-6 pl-1">
+            Found {result.total.toLocaleString()} results
+            {urlQ && <> for <span className="font-semibold text-gray-900">'{urlQ}'</span></>}
+            {result.executionTimeMs !== undefined && ` (${result.executionTimeMs} ms)`}
+          </div>
+        )}
 
         {/* Main Layout */}
         <div className="flex flex-col lg:flex-row gap-8">

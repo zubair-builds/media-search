@@ -36,6 +36,7 @@ export interface SearchResult {
   pageSize: number;
   total: number;
   totalPages: number;
+  executionTimeMs?: number;
 }
 
 export interface AnalyticsData {
