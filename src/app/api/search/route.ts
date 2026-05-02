@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { searchEngine, recordAnalytics } from '@/lib/search';
+import { searchEngine, recordAnalytics, sanitizeQuery } from '@/lib/search';
 
 export async function GET(request: NextRequest) {
   const startTime = Date.now();
   const searchParams = request.nextUrl.searchParams;
 
-  const q = searchParams.get('q') || undefined;
+  const rawQuery = searchParams.get('q') || undefined;
+  const sanitizedQ = sanitizeQuery(rawQuery);
+  const q = sanitizedQ && sanitizedQ.length >= 3 ? sanitizedQ : undefined;
   const creditParam = searchParams.get('credit');
   const credit = creditParam ? creditParam.split(',') : undefined;
   
@@ -20,8 +22,12 @@ export async function GET(request: NextRequest) {
     ? sortByParam 
     : undefined;
 
-  const page = parseInt(searchParams.get('page') || '1', 10);
-  const pageSize = parseInt(searchParams.get('pageSize') || '10', 10);
+  let page = parseInt(searchParams.get('page') || '1', 10);
+  if (!isFinite(page) || page < 1) page = 1;
+  let pageSize = parseInt(searchParams.get('pageSize') || '10', 10);
+  if (!isFinite(pageSize) || pageSize < 1) pageSize = 10;
+  // Defensive cap to prevent OOM/abuse
+  pageSize = Math.min(100, pageSize);
 
   try {
     const result = searchEngine.search({
@@ -38,7 +44,7 @@ export async function GET(request: NextRequest) {
     const executionTimeMs = Date.now() - startTime;
     recordAnalytics(q, executionTimeMs);
 
-    return NextResponse.json(result);
+    return NextResponse.json({ ...result, executionTimeMs });
   } catch (error) {
     console.error('Search error:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });

@@ -5,6 +5,49 @@ const GERMAN_STOP_WORDS = new Set([
   'der', 'die', 'das', 'und', 'in', 'im', 'zu', 'von', 'für', 'mit', 'ist', 'auf', 'aus', 'ein', 'eine', 'einer', 'eines', 'an', 'als', 'bei'
 ]);
 
+function normalizeText(text: string): string {
+  return text
+    .normalize('NFKD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .trim();
+}
+
+export function sanitizeQuery(input?: string): string | undefined {
+  if (!input) return undefined;
+  // Trim, collapse whitespace, remove control characters and potentially dangerous punctuation
+  let s = input.trim().replace(/[\s\u0000-\u001f\u007f]+/g, ' ');
+  // Remove angle brackets and backticks to avoid trivial injection-like content
+  s = s.replace(/[<>`\\]/g, '');
+  // Limit length to reasonable size
+  if (s.length > 200) s = s.slice(0, 200);
+  return s || undefined;
+}
+
+export function parseFlexibleDate(dateStr?: string): number | undefined {
+  if (!dateStr) return undefined;
+  const trimmed = dateStr.trim();
+  // Accept DD.MM.YYYY or DD.MM.YY
+  if (/^\d{1,2}\.\d{1,2}\.\d{2,4}$/.test(trimmed)) {
+    const parts = trimmed.split('.');
+    const day = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    let year = parseInt(parts[2], 10);
+    if (year < 100) year = year > 30 ? 1900 + year : 2000 + year;
+    const date = new Date(Date.UTC(year, month, day));
+    if (Number.isNaN(date.getTime())) return undefined;
+    if (date.getUTCDate() !== day || date.getUTCMonth() !== month || date.getUTCFullYear() !== year) {
+      return undefined;
+    }
+    return date.getTime();
+  }
+
+  // Try ISO / RFC parse
+  const ts = Date.parse(trimmed);
+  if (!Number.isNaN(ts)) return ts;
+  return undefined;
+}
+
 // Analytics State
 export const analyticsState = {
   totalSearches: 0,
@@ -17,7 +60,7 @@ export function recordAnalytics(query: string | undefined, timeMs: number) {
   analyticsState.totalQueryTimeMs += timeMs;
 
   if (query) {
-    const term = query.toLowerCase().trim();
+    const term = normalizeText(query);
     if (term) {
       analyticsState.keywordCounts.set(term, (analyticsState.keywordCounts.get(term) || 0) + 1);
     }
@@ -69,8 +112,8 @@ class SearchEngine {
   }
 
   private tokenize(text: string): string[] {
-    // Lowercase and remove punctuation
-    const cleanStr = text.toLowerCase().replace(/[.,!?;:()]/g, ' ');
+    // Normalize Unicode and remove punctuation so accented and ASCII queries align.
+    const cleanStr = normalizeText(text).replace(/[.,!?;:()]/g, ' ');
     return cleanStr
       .split(/\s+/)
       .filter(token => token.length > 1 && !GERMAN_STOP_WORDS.has(token));
@@ -121,6 +164,8 @@ class SearchEngine {
     pageSize?: number
   }) {
     let resultItems = this.items;
+    const normalizedQuery = sanitizeQuery(query.q);
+    const hasSearchQuery = !!normalizedQuery && normalizedQuery.length >= 3;
 
     // Hard Filters
     if (query.credit && query.credit.length > 0) {
@@ -134,18 +179,18 @@ class SearchEngine {
     }
 
     if (query.dateFrom) {
-      const fromTime = new Date(query.dateFrom).getTime();
-      resultItems = resultItems.filter(item => item.timestamp >= fromTime);
+      const fromTime = parseFlexibleDate(query.dateFrom);
+      if (fromTime !== undefined) resultItems = resultItems.filter(item => item.timestamp >= fromTime);
     }
 
     if (query.dateTo) {
-      const toTime = new Date(query.dateTo).getTime();
-      resultItems = resultItems.filter(item => item.timestamp <= toTime);
+      const toTime = parseFlexibleDate(query.dateTo);
+      if (toTime !== undefined) resultItems = resultItems.filter(item => item.timestamp <= toTime);
     }
 
     // Keyword Search (Relevance / Filtering)
-    if (query.q) {
-      const searchTokens = this.tokenize(query.q);
+    if (hasSearchQuery) {
+      const searchTokens = this.tokenize(normalizedQuery!);
       
       if (searchTokens.length > 0) {
         // Find matching item IDs
@@ -175,7 +220,7 @@ class SearchEngine {
           .map(item => {
              let score = matchedItemIds.get(item.id) || 0;
              // Boost score if bildnummer exact match
-             if (query.q === item.bildnummer) score += 10;
+             if (normalizedQuery === item.bildnummer) score += 10;
              return { item, score };
           })
           .sort((a, b) => b.score - a.score) // Sort by relevance descending
@@ -196,8 +241,8 @@ class SearchEngine {
     // Note: 'relevance' is already sorted if q is present, otherwise fallback to index order (or we can just leave it)
 
     // Pagination
-    const page = query.page || 1;
-    const pageSize = query.pageSize || 20;
+    const page = Math.max(1, query.page || 1);
+    const pageSize = Math.min(100, (query.pageSize && query.pageSize > 0) ? query.pageSize : 20);
     const total = resultItems.length;
     const totalPages = Math.ceil(total / pageSize);
     const paginatedItems = resultItems.slice((page - 1) * pageSize, page * pageSize);
