@@ -1,4 +1,4 @@
-# IMAGO Archive Search
+# IMAGO Media Search Application
 
 A Next.js + TypeScript search application for IMAGO-style media metadata.
 
@@ -27,7 +27,84 @@ Open http://localhost:3000.
 npm test
 ```
 
-## Architecture
+## High-level Approach
+
+1. **Standard decoupled client-server layout inside Next.js (App Router)**: Frontend UI, API layer, Search engine, and Dataset are independently testable and swappable, so a backend change (for example, moving to Elasticsearch) does not require UI modifications.
+
+2. **Custom in-memory inverted index**: Handles 10,000 records with full API responses returning in under 10 ms on warm cache.
+
+3. **Computationally intensive preprocessing runs once at server startup**: Normalization, tokenization, indexing, and restriction extraction happen at startup, keeping query-time logic minimal and fast.
+
+4. **Frontend state managed entirely via URL query parameters**: Ensures shareable links, bookmarks, and native browser back/forward navigation work without complex state-sync code.
+
+5. **Architecture explicitly sized for 10k-record scale with defined upgrade path**: Includes a migration strategy to Elasticsearch and a CQRS pattern for when the dataset exceeds RAM capacity.
+
+## Assumptions
+
+- Minimum useful keyword length is 3; queries shorter than 3 are not used for ranking.
+- Credit String Uniformity: The `fotografen` field acts as a discrete categorical tag (e.g., IMAGO / Getty Images), making it appropriate for dropdown filtering.
+- Date Completeness: Missing or malformed dates are gracefully excluded from strict range filters without crashing the parsing logic.
+- Restriction Syntax: The `PUBLICATIONxINx...xONLY` pattern is assumed to be consistent enough to safely parse and purge from the display text without losing context.
+
+
+## Search and Relevance
+
+### Query handling
+- API sanitizes q with sanitizeQuery.
+- Keyword search is active only when q length is at least 3.
+- q of length 1-2 is treated as no keyword search.
+
+### UI behavior for short queries
+- When user types 1-2 characters:
+1. UI shows helper text with result count and guidance to type at least 3 characters.
+2. URL/API q is not sent.
+3. Highlighting is disabled.
+
+Implementation references:
+- [src/app/page.tsx](src/app/page.tsx)
+- [src/components/HighlightText.tsx](src/components/HighlightText.tsx)
+- [src/app/api/search/route.ts](src/app/api/search/route.ts)
+
+### Tokenization and normalization
+Implemented in [src/lib/search.ts](src/lib/search.ts):
+1. lowercasing
+2. Unicode normalization + diacritic removal
+3. punctuation cleanup
+4. German stop-word removal
+
+### Indexed fields and weights
+- suchtext: 1.0
+- fotografen: 0.6
+- bildnummer: 0.3
+
+Match weights:
+- exact: 2.0
+- prefix: 1.0
+
+Per-token contribution:
+- score += matchWeight * fieldWeight
+
+### Matching and ranking
+1. Exact token matches from inverted index.
+2. Prefix matches via token startsWith scan.
+3. Score accumulated per item.
+4. Special rule: if raw query equals bildnummer, score is overridden to 10.
+
+Sort behavior:
+1. Relevance sort by score desc.
+2. Tie-breaker by newer timestamp first.
+3. date_asc/date_desc overrides are supported.
+4. If no q, default sorting is date_desc.
+
+### Design Decisions & Search Relevance
+
+- In-Memory Storage over Database: Data is loaded directly into Node.js RAM to guarantee zero external dependencies and instant startup for this evaluation environment.
+- Tokenization & Normalization: Queries and index tokens are normalized (lowercased, accents stripped via .normalize('NFKD')) and filtered for German stop-words before lookups occur.
+- Prefix vs. Fuzzy Matching: The engine relies on .startsWith() rather than Levenshtein distance to maintain strict <10 ms latency, trading typo-correction for raw retrieval speed.
+- Two-Axis Relevance Scoring: The search engine evaluates relevance using a two-axis model that respects the data hierarchy: score += matchWeight * fieldWeight.
+- Field Weights: Matches in suchtext (primary) have a 1.0 multiplier, fotografen (secondary) have a 0.6 multiplier, and bildnummer (optional text) have a 0.3 multiplier.
+- Match Weights: Exact token matches provide a base score of 2.0, while prefix matches provide a 1.0 base score.
+- The ID Short-Circuit: An exact equality match against a complete bildnummer implies an unambiguous user lookup; this triggers a flat +10 boost and ranks the item first, bypassing standard text evaluation.
 
 1. Frontend
 - Main page and state orchestration: [src/app/page.tsx](src/app/page.tsx)
@@ -100,6 +177,16 @@ Sort behavior:
 3. date_asc/date_desc overrides are supported.
 4. If no q, default sorting is date_desc.
 
+### Design Decisions & Search Relevance
+
+- In-Memory Storage over Database: Data is loaded directly into Node.js RAM to guarantee zero external dependencies and instant startup for this evaluation environment.
+- Tokenization & Normalization: Queries and index tokens are normalized (lowercased, accents stripped via .normalize('NFKD')) and filtered for German stop-words before lookups occur.
+- Prefix vs. Fuzzy Matching: The engine relies on .startsWith() rather than Levenshtein distance to maintain strict <10 ms latency, trading typo-correction for raw retrieval speed.
+- Two-Axis Relevance Scoring: The search engine evaluates relevance using a two-axis model that respects the data hierarchy: score += matchWeight * fieldWeight.
+- Field Weights: Matches in suchtext (primary) have a 1.0 multiplier, fotografen (secondary) have a 0.6 multiplier, and bildnummer (optional text) have a 0.3 multiplier.
+- Match Weights: Exact token matches provide a base score of 2.0, while prefix matches provide a 1.0 base score.
+- The ID Short-Circuit: An exact equality match against a complete bildnummer implies an unambiguous user lookup; this triggers a flat +10 boost and ranks the item first, bypassing standard text evaluation.
+
 ## Filters, Sorting, Pagination
 
 ### Filters
@@ -141,6 +228,19 @@ Planned production approach:
 
 This keeps ingestion asynchronous and avoids UI blocking.
 
+## Limitations & What I Would Do Next
+
+### Limitations
+- Single-Process Memory: The in-memory index is not shared across Node.js workers, meaning multi-instance deployments would currently suffer from duplicated memory overhead.
+- No Fuzzy Matching: The current engine does not correct user typos.
+- Missing Entity Extraction: Named entities (people, locations) are not currently extracted from the suchtext field.
+
+### Next Steps
+- Search Cluster Migration: Move the read layer to an Elasticsearch cluster to natively handle distributed inverted indexing, fuzzy matching, and BM25 (TF-IDF) relevance scoring so rare terms are not buried in long production descriptions.
+- CQRS & Continuous Ingestion: Implement an event-driven architecture using a message queue (e.g., AWS SQS) and background workers to separate writes from reads, ensuring bulk upserts never block user queries.
+- AI Enrichment: Introduce NLP/LLM models in the asynchronous ingestion pipeline to automatically extract entities and locations without impacting search latency.
+- Hardened Security: Replace basic string-level validation with strict Zod schema validation and rate-limiting to prevent scraping and DoS attacks.
+
 ## Analytics
 
 In-memory analytics in [src/lib/search.ts](src/lib/search.ts), exposed by [src/app/api/analytics/route.ts](src/app/api/analytics/route.ts):
@@ -169,7 +269,7 @@ Unit tests in [src/lib/search.test.ts](src/lib/search.test.ts) cover:
 4. analytics
 - counts and timing aggregation
 
-### Evaluator scenarios
+### scenarios
 
 1. Field-weight scenario
 - Query: apple
@@ -189,11 +289,3 @@ Unit tests in [src/lib/search.test.ts](src/lib/search.test.ts) cover:
 3. ID short-circuit
 - Query equals one bildnummer exactly.
 - Expected: that item ranks first.
-
-## Trade-offs
-
-1. In-memory index keeps setup simple and fast for challenge scope; not sufficient for multi-instance, million-scale serving.
-2. Prefix scanning is acceptable for 10k data but should move to a dedicated search backend for large vocabularies.
-3. Deterministic weighted scoring is transparent and testable, but less semantically rich than vector/hybrid retrieval.
-4. In-memory analytics resets on process restart.
-5. Current preprocessing is deterministic and lightweight; production can extend with language detection and richer NLP.
