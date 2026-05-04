@@ -15,6 +15,17 @@ function normalizeText(text: string): string {
     .trim();
 }
 
+// === Scoring configuration (per the spec) ===
+export const FIELD_WEIGHTS: Record<string, number> = {
+  suchtext: 1.0,
+  fotografen: 0.6,
+  bildnummer: 0.3,
+};
+
+export const MATCH_WEIGHTS: Record<string, number> = {
+  exact: 2.0,
+  prefix: 1.0,
+};
 export function sanitizeQuery(input?: string): string | undefined {
   if (!input) return undefined;
   // Trim, collapse whitespace, remove control characters and potentially dangerous punctuation
@@ -78,11 +89,12 @@ export function recordAnalytics(query: string | undefined, timeMs: number) {
 
 // Search Engine Class
 // This class implements the search functionality
-class SearchEngine {
+export class SearchEngine {
 
   // internal storage of inverted token index and items
   private items: MediaItem[] = [];
-  private invertedIndex: Map<string, Set<string>> = new Map();
+  // token -> { suchtext: Set<id>, fotografen: Set<id>, bildnummer: Set<id> }
+  private invertedIndex: Map<string, { suchtext: Set<string>; fotografen: Set<string>; bildnummer: Set<string> }> = new Map();
   // Filter lookups
   private credits: Set<string> = new Set();
   private allRestrictions: Set<string> = new Set();
@@ -134,10 +146,10 @@ class SearchEngine {
   // split description and photographer into tokens for fast search
   private tokenize(text: string): string[] {
     // Normalize Unicode and remove punctuation so accented and ASCII queries align.
-    const cleanStr = normalizeText(text).replace(/[.,!?;:()]/g, ' ');
+    const cleanStr = normalizeText(text).replace(/[.,!?;:()"'\/\\]/g, ' ');
     return cleanStr
       .split(/\s+/)
-      .filter(token => token.length > 1 && !GERMAN_STOP_WORDS.has(token));
+      .filter(token => token.length > 0 && !GERMAN_STOP_WORDS.has(token));
   }
 
   // ingest data and build inverted index
@@ -164,18 +176,24 @@ class SearchEngine {
       const tokens = this.tokenize(item.suchtext);
       const creditTokens = this.tokenize(item.fotografen);
 
-      const uniqueTokens = new Set([...tokens, ...creditTokens, item.bildnummer.toLowerCase()]);
-
-      // save reference in inverted index, mapping every clean word directly to id for fast fetch
-      uniqueTokens.forEach(token => {
-        if (!this.invertedIndex.has(token)) {
-          this.invertedIndex.set(token, new Set());
-        }
-        this.invertedIndex.get(token)!.add(item.id);
-      });
+      // Index tokens per-field to allow field-weighted scoring
+      tokens.forEach(t => this.addToIndex(t, item.id, 'suchtext'));
+      creditTokens.forEach(t => this.addToIndex(t, item.id, 'fotografen'));
+      // index the full bildnummer as a token under bildnummer field
+      this.addToIndex(item.bildnummer.toLowerCase(), item.id, 'bildnummer');
 
       return item;
     });
+  }
+
+  private addToIndex(token: string, id: string, field: 'suchtext' | 'fotografen' | 'bildnummer') {
+    if (!token) return;
+    let entry = this.invertedIndex.get(token);
+    if (!entry) {
+      entry = { suchtext: new Set<string>(), fotografen: new Set<string>(), bildnummer: new Set<string>() };
+      this.invertedIndex.set(token, entry);
+    }
+    entry[field].add(id);
   }
 
   // Exact API shape implementation
@@ -215,46 +233,82 @@ class SearchEngine {
     }
 
     // Keyword Search (Relevance / Filtering)
-    // if a valid search keyword exist , it breaks it down into individual search tokens
+    // if a valid search keyword exists, break it into individual tokens and score per spec
     if (hasSearchQuery) {
       const searchTokens = this.tokenize(normalizedQuery!);
 
       if (searchTokens.length > 0) {
-        // Find matching item IDs
-        const matchedItemIds = new Map<string, number>(); // id -> score
+        // candidate scores: id -> accumulated score
+        const candidateScores = new Map<string, number>();
 
-        searchTokens.forEach(token => {
-          // Exact match
-          // look up inverted index map, if token is found exact match, add its id to matchedItemIds with a score of 2
-          if (this.invertedIndex.has(token)) {
-            this.invertedIndex.get(token)!.forEach(id => {
-              matchedItemIds.set(id, (matchedItemIds.get(id) || 0) + 2); // Exact match score
+        // Helper to ensure candidate exists with initial 0
+        const ensureCandidate = (id: string) => {
+          if (!candidateScores.has(id)) candidateScores.set(id, 0);
+        };
+
+        // For each query token, accumulate scores per-field
+        for (const token of searchTokens) {
+          // exact token present in index
+          const entry = this.invertedIndex.get(token);
+          if (entry) {
+            // suchtext exact matches
+            entry.suchtext.forEach(id => {
+              ensureCandidate(id);
+              const add = MATCH_WEIGHTS.exact * FIELD_WEIGHTS.suchtext;
+              candidateScores.set(id, (candidateScores.get(id) || 0) + add);
             });
-          } else if (token.length > 2) {
-            // prefix matching (slower, but necessary for partial words)
-            // if a token is not found, check if any token in the inverted index starts with the current token
-            // and add its id to matchedItemIds with a score of 1
-            for (const [indexToken, ids] of this.invertedIndex.entries()) {
-              if (indexToken.startsWith(token)) {
-                ids.forEach(id => {
-                  matchedItemIds.set(id, (matchedItemIds.get(id) || 0) + 1); // Prefix match score
+            // fotografen exact matches
+            entry.fotografen.forEach(id => {
+              ensureCandidate(id);
+              const add = MATCH_WEIGHTS.exact * FIELD_WEIGHTS.fotografen;
+              candidateScores.set(id, (candidateScores.get(id) || 0) + add);
+            });
+            // bildnummer exact matches
+            entry.bildnummer.forEach(id => {
+              ensureCandidate(id);
+              const add = MATCH_WEIGHTS.exact * FIELD_WEIGHTS.bildnummer;
+              candidateScores.set(id, (candidateScores.get(id) || 0) + add);
+            });
+          }
+
+          // Prefix matches: scan index keys (acceptable for ~10k items)
+          if (token.length > 1) {
+            for (const [indexToken, posting] of this.invertedIndex.entries()) {
+              if (indexToken.startsWith(token) && indexToken !== token) {
+                posting.suchtext.forEach(id => {
+                  ensureCandidate(id);
+                  const add = MATCH_WEIGHTS.prefix * FIELD_WEIGHTS.suchtext;
+                  candidateScores.set(id, (candidateScores.get(id) || 0) + add);
+                });
+                posting.fotografen.forEach(id => {
+                  ensureCandidate(id);
+                  const add = MATCH_WEIGHTS.prefix * FIELD_WEIGHTS.fotografen;
+                  candidateScores.set(id, (candidateScores.get(id) || 0) + add);
+                });
+                posting.bildnummer.forEach(id => {
+                  ensureCandidate(id);
+                  const add = MATCH_WEIGHTS.prefix * FIELD_WEIGHTS.bildnummer;
+                  candidateScores.set(id, (candidateScores.get(id) || 0) + add);
                 });
               }
             }
           }
-        });
+        }
 
-        // Filter and add relevance scores
-        // if exact id matched
+        // Apply ID short-circuit: any document whose raw query equals its bildnummer gets score 10 and skip other text evaluations
+        const normalizedRaw = normalizedQuery!;
+        for (const item of resultItems) {
+          if (item.bildnummer === normalizedRaw || item.bildnummer.toLowerCase() === normalizedRaw.toLowerCase()) {
+            // override any previous score
+            candidateScores.set(item.id, 10);
+          }
+        }
+
+        // Filter resultItems down to candidates and attach score
         resultItems = resultItems
-          .filter(item => matchedItemIds.has(item.id))
-          .map(item => {
-            let score = matchedItemIds.get(item.id) || 0;
-            // Boost score if bildnummer exact match
-            if (normalizedQuery === item.bildnummer) score += 10;
-            return { item, score };
-          })
-          .sort((a, b) => b.score - a.score) // Sort by relevance descending
+          .filter(item => candidateScores.has(item.id))
+          .map(item => ({ item, score: candidateScores.get(item.id) || 0 }))
+          .sort((a, b) => b.score - a.score || b.item.timestamp - a.item.timestamp)
           .map(x => x.item);
       } else {
         resultItems = [];

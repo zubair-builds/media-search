@@ -34,6 +34,9 @@ function SearchApp() {
   const [localQ, setLocalQ] = useState(urlQ);
   const debouncedQ = useDebounce(localQ, 300);
   const lastPushedQ = useRef(urlQ);
+  // Show a subtle tip when the user typed 1-2 chars but we don't send that to the API
+  const trimmedLocalQ = localQ.trim();
+  const showShortQueryTip = trimmedLocalQ.length > 0 && trimmedLocalQ.length < 3;
 
   // Sync back from URL if user uses browser history (back/forward buttons)
   useEffect(() => {
@@ -63,9 +66,29 @@ function SearchApp() {
 
   // Push debounced search query to URL, resetting to page 1
   useEffect(() => {
-    if (debouncedQ !== urlQ) {
-      lastPushedQ.current = debouncedQ;
-      updateUrl({ q: debouncedQ, page: 1 });
+    const trimmedDebouncedQ = debouncedQ.trim();
+
+    // Only include q in URL/API when empty (clear) or when query has at least 3 chars.
+    // For 1-2 chars, clear q so the backend returns unfiltered results.
+    if (trimmedDebouncedQ.length === 0) {
+      if (urlQ !== '') {
+        lastPushedQ.current = '';
+        updateUrl({ q: null, page: 1 });
+      }
+      return;
+    }
+
+    if (trimmedDebouncedQ.length < 3) {
+      if (urlQ !== '') {
+        lastPushedQ.current = '';
+        updateUrl({ q: null, page: 1 });
+      }
+      return;
+    }
+
+    if (trimmedDebouncedQ !== urlQ) {
+      lastPushedQ.current = trimmedDebouncedQ;
+      updateUrl({ q: trimmedDebouncedQ, page: 1 });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQ]);
@@ -185,9 +208,19 @@ function SearchApp() {
         {/* Search Stats */}
         {!loading && result && (
           <div className="text-sm text-gray-500 mb-6 pl-1">
-            Found {result.total.toLocaleString()} results
-            {urlQ && <> for <span className="font-semibold text-gray-900">&apos;{urlQ}&apos;</span></>}
-            {result.executionTimeMs !== undefined && ` (${result.executionTimeMs} ms)`}
+            {showShortQueryTip && (
+              <span className="text-xs text-gray-600">
+                Showing {result.total.toLocaleString()} results. Type at least 3 characters to search.
+                {result.executionTimeMs !== undefined && ` (${result.executionTimeMs} ms)`}
+              </span>
+            )}
+            {!showShortQueryTip && (
+              <>
+                Found {result.total.toLocaleString()} results
+                {urlQ && <> for <span className="font-semibold text-gray-900">&apos;{urlQ}&apos;</span></>}
+                {result.executionTimeMs !== undefined && ` (${result.executionTimeMs} ms)`}
+              </>
+            )}
           </div>
         )}
 

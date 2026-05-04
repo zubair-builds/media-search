@@ -1,24 +1,70 @@
+import { SearchEngine } from './search';
+import { RawMediaItem } from './types';
+
+describe('Search scoring', () => {
+  test('ID short-circuit: exact bildnummer ranks first', () => {
+    const data: RawMediaItem[] = [
+      { suchtext: 'A photo of a cat', bildnummer: 'ID123', fotografen: 'Photog A', datum: '01.01.2000', hoehe: '100', breite: '100' },
+      { suchtext: 'Some other content', bildnummer: 'ID456', fotografen: 'Photog B', datum: '02.02.2001', hoehe: '200', breite: '200' }
+    ];
+
+    const engine = new SearchEngine(data);
+    const res = engine.search({ q: 'ID123', page: 1, pageSize: 10 });
+    expect(res.items.length).toBeGreaterThan(0);
+    expect(res.items[0].id).toBe('ID123');
+  });
+
+  test('Field weight: match in suchtext outranks fotografen', () => {
+    const data: RawMediaItem[] = [
+      { suchtext: 'apple banana', bildnummer: 'A1', fotografen: 'Photog X', datum: '01.01.2010', hoehe: '100', breite: '100' },
+      { suchtext: 'other content', bildnummer: 'B1', fotografen: 'apple', datum: '01.01.2011', hoehe: '100', breite: '100' }
+    ];
+
+    const engine = new SearchEngine(data);
+    const res = engine.search({ q: 'apple', page: 1, pageSize: 10 });
+    expect(res.items.length).toBe(2);
+    // item A1 has 'apple' in suchtext (higher weight) and should appear before B1
+    expect(res.items[0].id).toBe('A1');
+    expect(res.items[1].id).toBe('B1');
+  });
+
+  test('Exact token match outranks prefix match', () => {
+    const data: RawMediaItem[] = [
+      { suchtext: 'jack', bildnummer: 'J1', fotografen: 'Photog', datum: '03.03.2012', hoehe: '100', breite: '100' },
+      { suchtext: 'jackson', bildnummer: 'J2', fotografen: 'Photog', datum: '04.04.2013', hoehe: '100', breite: '100' }
+    ];
+
+    const engine = new SearchEngine(data);
+    const res = engine.search({ q: 'jack', page: 1, pageSize: 10 });
+    expect(res.items.length).toBe(2);
+    // exact token 'jack' (J1) should outrank prefix match in 'jackson' (J2)
+    expect(res.items[0].id).toBe('J1');
+    expect(res.items[1].id).toBe('J2');
+  });
+});
 import { describe, expect, test, beforeEach } from '@jest/globals';
 import { searchEngine, recordAnalytics, analyticsState, sanitizeQuery, parseFlexibleDate } from './search';
 
 describe('Search Engine Preprocessing & Core Logic', () => {
   test('should parse dates to unix timestamp correctly', () => {
-    // 25.07.1952 in data.json (suchtext has "Wildlife photography lion safari Kenya Africa nature PUBLICATIONxINxJPNxONLY")
-    const res = searchEngine.search({ q: 'Wildlife' });
-    expect(res.items.length).toBeGreaterThan(0);
-    // Uses UTC in SearchEngine.parseDate
-    expect(res.items[0].timestamp).toBe(Date.UTC(1952, 6, 25));
+    // Validate date parsing helper directly
+    expect(parseFlexibleDate('25.07.1952')).toBe(Date.UTC(1952, 6, 25));
   });
 
   test('should extract and strip restrictions correctly', () => {
-    const res = searchEngine.search({ q: 'Olaf Scholz' });
+    // Use a small fixture to ensure restriction extraction works deterministically
+    const fixture: RawMediaItem[] = [
+      { suchtext: 'Some caption PUBLICATIONxINxGERxSUIxAUTxONLY', bildnummer: 'T1', fotografen: 'Photog', datum: '01.01.2000', hoehe: '100', breite: '100' }
+    ];
+    const localEngine = new SearchEngine(fixture);
+    const res = localEngine.search({ q: 'Some caption' });
     const item = res.items[0];
-    
+
     // Original text had PUBLICATIONxINxGERxSUIxAUTxONLY
     expect(item.restrictions).toContain('GER');
     expect(item.restrictions).toContain('SUI');
     expect(item.restrictions).toContain('AUT');
-    
+
     // The restriction string should be stripped from suchtext
     expect(item.suchtext).not.toContain('PUBLICATIONxINxGERxSUIxAUTxONLY');
   });

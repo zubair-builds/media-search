@@ -1,171 +1,199 @@
 # IMAGO Archive Search
 
-A high-performance media search application built with Next.js (App Router), TypeScript, and Tailwind CSS. It features an in-memory inverted index, prefix matching, relevance scoring, advanced faceted search, and built-in usage analytics.
+A Next.js + TypeScript search application for IMAGO-style media metadata.
 
----
+Quick demo: https://imago-search-demo.onrender.com/
 
-## 🚀 Installation & Local Development
+## Installation
 
 ### Prerequisites
-- **Node.js** v18.x or later
-- **npm** or **yarn**
+- Node.js 18+
+- npm
 
-### 1. Setup and Installation
-Clone the repository and install the dependencies:
+### Setup
 ```bash
 npm install
 ```
 
-### 2. Run the Development Server
-Launch the local server:
+### Run locally
 ```bash
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser to interact with the application.
 
-### 3. Run Test Suite
-To run tests via Jest for search logic, date parsing, tokenization, and analytics:
+Open http://localhost:3000.
+
+### Run tests
 ```bash
 npm test
 ```
 
----
+## Architecture
 
-## 🛠️ Architecture Overview
+1. Frontend
+- Main page and state orchestration: [src/app/page.tsx](src/app/page.tsx)
+- URL query parameters are the source of truth for q, filters, sort, page, and pageSize.
+- Search input is debounced (300ms).
 
-The application follows a decoupled client-server architecture inside the Next.js framework:
+2. API layer
+- Search API: [src/app/api/search/route.ts](src/app/api/search/route.ts)
+- Facets API: [src/app/api/facets/route.ts](src/app/api/facets/route.ts)
+- Analytics API: [src/app/api/analytics/route.ts](src/app/api/analytics/route.ts)
 
-- **Next.js Frontend (`src/app/page.tsx`)**: Responsive, interactive React interface built with Tailwind CSS. State synchronization is tied directly to the URL via query parameters.
-- **In-Memory Search Layer (`src/lib/search.ts`)**: Initializes at application startup by loading static media data, parsing it into structured models, and compiling an inverted index for sub-millisecond retrieval times.
-- **RESTful API (`src/app/api/search/route.ts`)**: An HTTP endpoint that accepts search criteria via query string parameters, processes query sanitization, executes the search against the engine, tracks execution metrics, and yields paginated responses.
+3. Search engine
+- In-memory engine and scoring: [src/lib/search.ts](src/lib/search.ts)
+- Types: [src/lib/types.ts](src/lib/types.ts)
+- Seed data: [src/lib/data.json](src/lib/data.json)
 
----
+4. UI components
+- Search controls: [src/components/SearchControls.tsx](src/components/SearchControls.tsx)
+- Filters: [src/components/FiltersSidebar.tsx](src/components/FiltersSidebar.tsx)
+- Result cards: [src/components/MediaCard.tsx](src/components/MediaCard.tsx)
+- Highlighting: [src/components/HighlightText.tsx](src/components/HighlightText.tsx)
+- Pagination: [src/components/Pagination.tsx](src/components/Pagination.tsx)
 
-## 🔍 Search Strategy & Relevance/Scoring
+## Search and Relevance
 
-### 1. Tokenization & Normalization
-- Text strings are converted to lowercase, have diacritics removed, and are filtered using a curated set of German stop words (e.g., `der`, `die`, `das`).
-- Punctuation and noisy tokens are stripped.
-- Search queries are only accepted as a valid keyword search when they are at least **3 characters** long, filtering out low-quality free-text terms.
+### Query handling
+- API sanitizes q with sanitizeQuery.
+- Keyword search is active only when q length is at least 3.
+- q of length 1-2 is treated as no keyword search.
 
-### 2. Inverted Index Strategy
-The core search functionality is driven by a single-pass in-memory inverted index `Map<string, Set<string>>` where:
-- Each key is a preprocessed, normalized word token.
-- Each value is a `Set` of unique image IDs (`bildnummer`) where the token occurs.
+### UI behavior for short queries
+- When user types 1-2 characters:
+1. UI shows helper text with result count and guidance to type at least 3 characters.
+2. URL/API q is not sent.
+3. Highlighting is disabled.
 
-### 3. Scoring & Relevance Mechanics
-When a user submits a search query:
-1. The query text is tokenized.
-2. For each token, the search engine searches the index for exact matches or prefix matches.
-   - **Exact Match**: Gives **2 points** to the document score.
-   - **Prefix Match**: Gives **1 point** for partial matches (where token length > 2).
-3. If a token exactly matches the **`bildnummer`**, an additional boost of **10 points** is awarded.
-4. Total document relevance scores are summed, and results are returned sorted in descending order of score.
+Implementation references:
+- [src/app/page.tsx](src/app/page.tsx)
+- [src/components/HighlightText.tsx](src/components/HighlightText.tsx)
+- [src/app/api/search/route.ts](src/app/api/search/route.ts)
 
----
+### Tokenization and normalization
+Implemented in [src/lib/search.ts](src/lib/search.ts):
+1. lowercasing
+2. Unicode normalization + diacritic removal
+3. punctuation cleanup
+4. German stop-word removal
 
-## 🧩 Preprocessing Strategy
+### Indexed fields and weights
+- suchtext: 1.0
+- fotografen: 0.6
+- bildnummer: 0.3
 
-Preprocessing converts inconsistent text payloads into highly queryable fields:
+Match weights:
+- exact: 2.0
+- prefix: 1.0
 
-- **Date Parsing (`datum`)**: String representations like `01.01.1900` are parsed, converted into millisecond timestamps, and mapped to UTC to avoid timezone drift or parsing bugs.
-- **Restriction Extraction (`suchtext`)**: Restriction tags matching the regex `/([A-Z]+x)+ONLY/` (e.g. `PUBLICATIONxINxGERxSUIxAUTxONLY`) are extracted from `suchtext`.
-  - The regions within the tags are parsed out (e.g., `GER`, `SUI`) for faceted multi-filtering.
-  - The match string is stripped from `suchtext` to prevent noise during inverted index creation.
+Per-token contribution:
+- score += matchWeight * fieldWeight
 
-```
-Build Time / Ingestion      ->      Client/Server Queries
-[Raw Data] -> [Extraction] -> [Build Inverted Index] -> [Faceted Results]
-```
+### Matching and ranking
+1. Exact token matches from inverted index.
+2. Prefix matches via token startsWith scan.
+3. Score accumulated per item.
+4. Special rule: if raw query equals bildnummer, score is overridden to 10.
 
----
+Sort behavior:
+1. Relevance sort by score desc.
+2. Tie-breaker by newer timestamp first.
+3. date_asc/date_desc overrides are supported.
+4. If no q, default sorting is date_desc.
 
-## 📈 Scaling for Millions of Items & Continuous Ingestion
+## Filters, Sorting, Pagination
 
-The current in-memory inverted index runs under 50ms for up to **10,000 items**. To scale up to millions of documents and ingest new content per minute without blocking user requests, the architecture can evolve in the following ways:
+### Filters
+- credit (fotografen)
+- dateFrom/dateTo range
+- restrictions extracted from suchtext
 
-### 1. Move to a Scalable Index (Elasticsearch / OpenSearch)
-- **Why**: Storing millions of documents in memory per Next.js server instance causes high memory overhead (OOM) and doesn't scale across serverless or multi-region environments.
-- **What**: Move the search and indexing layer to a persistent search-optimized cluster (e.g., Elasticsearch, OpenSearch, or Meilisearch) supporting distributed inverted indexes, text relevance tuning (BM25), and sub-100ms queries at scale.
+### Restrictions extraction
+- Regex-based extraction for patterns like PUBLICATIONxINxGERxSUIxAUTxONLY.
+- Parsed restrictions are stored as structured arrays per item.
 
-### 2. Continuous Ingestion Pipeline (Events & Workers)
-- New items added minute-by-minute can be processed via an asynchronous pipeline:
-  1. **Message Broker**: New files or updates emit an event to a queue (e.g., AWS SQS or Kafka).
-  2. **Worker Function**: A background serverless function processes incoming items (normalizes text, extracts restrictions, converts dates).
-  3. **Atomic Writes**: Background workers bulk-upsert transformed items into the search backend.
-- Read operations are decoupled from write operations (CQRS pattern) to prevent search traffic from stalling when new content arrives.
+### Pagination response
+`GET /api/search` returns:
+- items
+- page
+- pageSize
+- total
+- totalPages
+- executionTimeMs
 
-### 3. Caching Layer
-- Implementing an edge or caching tier (e.g., Redis, Cloudflare workers) saves frequent searches. The cache is automatically updated or cleared when new metadata is indexed.
+## Preprocessing Strategy
 
----
+Executed at engine ingestion/startup in [src/lib/search.ts](src/lib/search.ts):
+1. restriction extraction + cleanup
+2. date parsing to UTC timestamp
+3. text normalization/tokenization
+4. inverted index build (token -> per-field posting sets)
 
-## 📊 Analytics
-We implement lightweight, in-memory search logging to capture user patterns:
-- **`totalSearches`**: Tracks total search queries executed.
-- **`totalQueryTimeMs`**: Measures total API execution time in milliseconds.
-- **`keywordCounts`**: Uses a key-value hash map to evaluate top keywords to inform content indexing or popular tag trends.
+For challenge-size scale testing, a 10,000 item generator exists in [scripts/generate-data.js](scripts/generate-data.js).
 
----
+## New Items Every Minute (Scaling Plan)
 
-## 📡 API Reference
+Planned production approach:
+1. Write new items to primary database.
+2. Publish ingestion event to queue.
+3. Worker applies the same preprocessing rules.
+4. Worker upserts into search index.
+5. API serves from search index without waiting for ingestion.
 
-### `GET /api/search`
+This keeps ingestion asynchronous and avoids UI blocking.
 
-Retrieves a paginated list of media search results matched against full-text queries and dynamic faceted filter options.
+## Analytics
 
-#### Query Parameters
-| Parameter | Type | Description |
-| :--- | :--- | :--- |
-| `q` | `string` | Search query keyword (min. 3 characters). |
-| `credit` | `string` | Filter by one or more photographer names (comma-separated). |
-| `dateFrom` | `string` | Start filter date (`DD.MM.YYYY` or `YYYY-MM-DD`). |
-| `dateTo` | `string` | End filter date (`DD.MM.YYYY` or `YYYY-MM-DD`). |
-| `restrictions` | `string` | Filter by one or more restriction codes (comma-separated). |
-| `sortBy` | `string` | Either `date_asc`, `date_desc`, or `relevance`. Defaults to `relevance` if `q` is present. |
-| `page` | `number` | The requested page number (defaults to `1`). |
-| `pageSize` | `number` | Number of items per page (`10`, `20`, `50`, `100`, max `100`). Defaults to `10`. |
+In-memory analytics in [src/lib/search.ts](src/lib/search.ts), exposed by [src/app/api/analytics/route.ts](src/app/api/analytics/route.ts):
+1. total searches
+2. average query time
+3. top keywords
 
-#### Example Query
-```bash
-GET /api/search?q=Michael+Jackson&credit=IMAGO+%2F+teutopress&sortBy=date_desc&pageSize=10
-```
+## Testing
 
-#### Example JSON Response
-```json
-{
-  "items": [
-    {
-      "id": "0056821849",
-      "suchtext": "Michael Jackson 11 95 her Mann Musik Gesang Pop USA Hemd leger Studio hoch ganz stehend Bühne...",
-      "bildnummer": "0056821849",
-      "fotografen": "IMAGO / teutopress",
-      "datum": "01.11.1995",
-      "hoehe": "948",
-      "breite": "1440",
-      "timestamp": 815184000000,
-      "restrictions": []
-    }
-  ],
-  "page": 1,
-  "pageSize": 10,
-  "total": 1,
-  "totalPages": 1
-}
-```
+Unit tests in [src/lib/search.test.ts](src/lib/search.test.ts) cover:
+1. scoring and ranking
+- ID short-circuit
+- field weight precedence
+- exact vs prefix
 
----
+2. preprocessing and parsing
+- restrictions extraction
+- date parsing
+- query sanitization
+- accent-insensitive matching
 
-## ⚙️ Design Decisions & Trade-offs
+3. filtering
+- credit
+- restrictions
 
-1. **In-Memory Storage over Database**: Opting for an in-memory inverted index allows our tests and development setup to start immediately without configuring relational or vector databases (e.g., PostgreSQL, Elasticsearch). The trade-off is higher RAM consumption as the corpus grows.
-2. **Defensive Processing on the Server**: The Next.js API layer aggressively normalizes input search queries, restricting them to a max character count (200 characters) and removing non-printable control strings. This avoids injection and ensures consistent parsing.
-3. **URL-first State Sync**: React application state is pushed directly into URL query parameters. This ensures that bookmarking, linking, and browser "back/forward" operations work out-of-the-box.
-4. **Keyword Filtering Behavior**: Query strings shorter than 3 characters are evaluated as empty queries. This avoids overwhelming users with noisy results and allows active faceted filtering (such as photographer or restriction chips) to operate smoothly without interfering keywords.
+4. analytics
+- counts and timing aggregation
 
----
+### Evaluator scenarios
 
-## 🔮 Future Improvements / Roadmap
-- **Text Highlighting**: Return snippets with matching words highlighted with `<mark>` tags to provide visual context directly to the search interface.
-- **Advanced Stemming**: Introduce porter-stemming algorithms to equate singular and plural queries (`Jackson` vs `Jacksons`).
-- **Fuzzy Search Capabilities**: Implement Levenshtein Distance or trigram indexing to tolerate common typos.
+1. Field-weight scenario
+- Query: apple
+- Expected order:
+1. suchtext exact
+2. fotografen exact
+3. suchtext prefix
+
+2. Same-field exact vs prefix
+- Query: jack
+- Expected order:
+1. suchtext exact jack
+2. suchtext prefix jackson
+3. suchtext prefix jackfruit
+- If 2 and 3 tie on score, newer date ranks first.
+
+3. ID short-circuit
+- Query equals one bildnummer exactly.
+- Expected: that item ranks first.
+
+## Trade-offs
+
+1. In-memory index keeps setup simple and fast for challenge scope; not sufficient for multi-instance, million-scale serving.
+2. Prefix scanning is acceptable for 10k data but should move to a dedicated search backend for large vocabularies.
+3. Deterministic weighted scoring is transparent and testable, but less semantically rich than vector/hybrid retrieval.
+4. In-memory analytics resets on process restart.
+5. Current preprocessing is deterministic and lightweight; production can extend with language detection and richer NLP.

@@ -11,13 +11,14 @@ const escapeRegExp = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\
 // It wraps matches in <mark> tags. If the text is long (>100 chars),
 // it slices a window around the match to save screen real estate.
 export const HighlightText: React.FC<HighlightTextProps> = ({ text, keyword }) => {
-  if (!keyword) return <>{text}</>;
+  if (!keyword || keyword.trim().length < 3) return <>{text}</>;
 
-  const escapedKeyword = escapeRegExp(keyword);
+  const escapedKeyword = escapeRegExp(keyword.trim());
   const regex = new RegExp(`(${escapedKeyword})`, 'gi');
   const parts = text.split(regex);
 
-  const matchIndex = parts.findIndex(p => p.toLowerCase() === keyword.toLowerCase());
+  const normalizedKeyword = keyword.trim().toLowerCase();
+  const matchIndex = parts.findIndex(p => p.toLowerCase() === normalizedKeyword);
 
   if (matchIndex !== -1 && text.length > 100) {
     const windowSize = 40;
