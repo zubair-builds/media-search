@@ -11,13 +11,10 @@ import { SearchControls } from '@/components/SearchControls';
 import { MediaCard } from '@/components/MediaCard';
 import { Pagination } from '@/components/Pagination';
 
-// Core controller of the application. Manages query states, URL synchronization,
-// and API interactions.
 function SearchApp() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  // Read current state from the URL (Single Source of Truth)
   const urlQ = searchParams.get('q') || '';
   const credit = searchParams.get('credit') || '';
   const dateFrom = searchParams.get('dateFrom') || '';
@@ -30,15 +27,12 @@ function SearchApp() {
   if (!isFinite(pageSize) || pageSize < 1) pageSize = 10;
   pageSize = Math.min(100, pageSize);
 
-  // Maintain local state ONLY for the search input to allow smooth, debounceable typing
   const [localQ, setLocalQ] = useState(urlQ);
   const debouncedQ = useDebounce(localQ, 300);
   const lastPushedQ = useRef(urlQ);
-  // Show a subtle tip when the user typed 1-2 chars but we don't send that to the API
   const trimmedLocalQ = localQ.trim();
   const showShortQueryTip = trimmedLocalQ.length > 0 && trimmedLocalQ.length < 3;
 
-  // Sync back from URL if user uses browser history (back/forward buttons)
   useEffect(() => {
     if (urlQ !== lastPushedQ.current) {
       setLocalQ(urlQ);
@@ -46,10 +40,9 @@ function SearchApp() {
     }
   }, [urlQ]);
 
-  // Generic updater to modify URL params and trigger a React re-render cycle
   const updateUrl = (updates: Record<string, string | number | string[] | null>) => {
     const params = new URLSearchParams(searchParams.toString());
-    
+
     Object.entries(updates).forEach(([key, value]) => {
       if (value === null || value === '' || (Array.isArray(value) && value.length === 0)) {
         params.delete(key);
@@ -60,16 +53,12 @@ function SearchApp() {
       }
     });
 
-    // Replace the URL to avoid bloating history, without scrolling to the top
     router.replace(`/?${params.toString()}`, { scroll: false });
   };
 
-  // Push debounced search query to URL, resetting to page 1
   useEffect(() => {
     const trimmedDebouncedQ = debouncedQ.trim();
 
-    // Only include q in URL/API when empty (clear) or when query has at least 3 chars.
-    // For 1-2 chars, clear q so the backend returns unfiltered results.
     if (trimmedDebouncedQ.length === 0) {
       if (urlQ !== '') {
         lastPushedQ.current = '';
@@ -93,7 +82,6 @@ function SearchApp() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [debouncedQ]);
 
-  // Data fetching states
   const [result, setResult] = useState<SearchResult | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -101,7 +89,6 @@ function SearchApp() {
   const [analyticsOpen, setAnalyticsOpen] = useState<boolean>(false);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
-  // Fetch facets on mount for the sidebar filters
   useEffect(() => {
     fetch('/api/facets')
       .then(res => res.json())
@@ -109,7 +96,6 @@ function SearchApp() {
       .catch(err => console.error('Failed to load facets', err));
   }, []);
 
-  // Keyboard shortcut to focus search input (Cmd+K or Ctrl+K)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -122,7 +108,6 @@ function SearchApp() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Fetch Search Results directly based on the URL searchParams
   useEffect(() => {
     queueMicrotask(() => setLoading(true));
     fetch(`/api/search?${searchParams.toString()}`)
@@ -144,7 +129,6 @@ function SearchApp() {
       });
   }, [searchParams]);
 
-  // Handle addition/removal of restriction filters
   const toggleRestriction = (val: string) => {
     const newRestrictions = restrictions.includes(val)
       ? restrictions.filter(r => r !== val)
@@ -152,9 +136,7 @@ function SearchApp() {
     updateUrl({ restrictions: newRestrictions, page: 1 });
   };
 
-  // Reset all filters to their initial defaults
   const handleResetFilters = () => {
-    // We clear all filter params
     updateUrl({
       q: null,
       credit: null,
@@ -170,11 +152,10 @@ function SearchApp() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
       <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Header Section */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-4xl font-bold text-gray-900 tracking-tight">IMAGO Archive</h1>
-            <p className="text-gray-600 mt-2 text-sm">Professional image collection and search</p>
+            <h1 className="text-4xl font-bold text-gray-900 tracking-tight">Media Search Lab</h1>
+            <p className="text-gray-600 mt-2 text-sm">In-memory editorial image search</p>
           </div>
           <button
             type="button"
@@ -205,7 +186,6 @@ function SearchApp() {
           onClose={() => setAnalyticsOpen(false)}
         />
 
-        {/* Search Stats */}
         {!loading && result && (
           <div className="text-sm text-gray-500 mb-6 pl-1">
             {showShortQueryTip && (
@@ -217,14 +197,13 @@ function SearchApp() {
             {!showShortQueryTip && (
               <>
                 Found {result.total.toLocaleString()} results
-                {urlQ && <> for <span className="font-semibold text-gray-900">&apos;{urlQ}&apos;</span></>}
+                {urlQ && <> for <span className="font-semibold text-gray-900">'{urlQ}'</span></>}
                 {result.executionTimeMs !== undefined && ` (${result.executionTimeMs} ms)`}
               </>
             )}
           </div>
         )}
 
-        {/* Main Layout */}
         <div className="flex flex-col lg:flex-row gap-8">
           <FiltersSidebar
             facets={facets}
@@ -239,7 +218,6 @@ function SearchApp() {
             onReset={handleResetFilters}
           />
 
-          {/* Main Content */}
           <main className="flex-1 min-w-0">
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-lg mb-6">
@@ -252,7 +230,6 @@ function SearchApp() {
               </div>
             )}
 
-            {/* Results Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-8">
               {!loading && result && result.items.length === 0 && (
                 <div className="col-span-full py-20 text-center">
@@ -263,12 +240,11 @@ function SearchApp() {
                   <p className="text-gray-600">Try adjusting your search or filters</p>
                 </div>
               )}
-              
+
               {result && result.items.map((item: MediaItem) => (
                 <MediaCard key={item.id} item={item} debouncedQ={urlQ} />
               ))}
 
-              {/* Loading Skeleton Cards */}
               {loading && !result && Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="bg-white border border-gray-200 rounded-xl overflow-hidden animate-pulse">
                   <div className="px-5 py-4 border-b border-gray-100 bg-gray-100">
@@ -296,7 +272,6 @@ function SearchApp() {
               ))}
             </div>
 
-            {/* Pagination & Per Page Selector */}
             {result && result.total > 0 && (
               <Pagination
                 page={page}
