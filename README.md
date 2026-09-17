@@ -2,8 +2,6 @@
 
 Next.js + TypeScript exploration of editorial image search: in-memory inverted index, URL-driven UI, facets, scoring, and tests.
 
-Suggested repo name: `media-search`.
-
 This is a learning project. I wanted to understand how a metadata search works end-to-end — tokenize captions, build a posting list, score fields, filter credits/dates/rights, and keep the query string as the source of truth.
 
 ## Stack
@@ -18,8 +16,8 @@ This is a learning project. I wanted to understand how a metadata search works e
 ## Setup
 
 ```bash
-git clone https://github.com/zubair-builds/imago-search.git
-cd imago-search
+git clone https://github.com/zubair-builds/media-search.git
+cd media-search
 npm install
 npm run dev
 ```
