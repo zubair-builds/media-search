@@ -4,7 +4,6 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// 1. Define our diverse seed data components
 const subjects = [
     "Michael Jackson her Mann Musik Gesang Pop USA Hemd leger Studio hoch ganz stehend Bühne",
     "J.Morris, Manchester Utd inside right 7th January 1948",
@@ -19,50 +18,46 @@ const subjects = [
 ];
 
 const photographers = [
-    "IMAGO / teutopress",
-    "IMAGO / United Archives International",
-    "IMAGO / Getty Images",
-    "IMAGO / Reuters",
-    "IMAGO / dpa",
-    "IMAGO / Xinhua"
+    "Archive / teutopress",
+    "Archive / United Archives International",
+    "Archive / Getty Images",
+    "Archive / Reuters",
+    "Archive / dpa",
+    "Archive / Xinhua"
 ];
 
 const restrictions = [
     "PUBLICATIONxINxGERxSUIxAUTxONLY",
     "PUBLICATIONxINxUKxUSAxONLY",
     "PUBLICATIONxINxJPNxONLY",
-    "", // Some should have NO restrictions
+    "",
     ""
 ];
 
-// 2. Helper to get random item
 const getRandom = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
-// 3. Helper to generate a random date string (DD.MM.YYYY)
 const getRandomDate = () => {
     const start = new Date(1940, 0, 1).getTime();
     const end = new Date(2024, 0, 1).getTime();
     const date = new Date(start + Math.random() * (end - start));
-    
+
     const day = String(date.getDate()).padStart(2, '0');
     const month = String(date.getMonth() + 1).padStart(2, '0');
     const year = date.getFullYear();
-    
+
     return `${day}.${month}.${year}`;
 };
 
-// 4. Generate the 10,000 items
 const generateData = (count) => {
     const data = [];
     for (let i = 1; i <= count; i++) {
         const baseText = getRandom(subjects);
         const restriction = getRandom(restrictions);
-        // Combine text and sometimes add a restriction at the end
         const suchtext = restriction ? `${baseText} ${restriction}` : baseText;
 
         data.push({
             suchtext: suchtext,
-            bildnummer: `00${50000000 + i}`, // Unique ID
+            bildnummer: `00${50000000 + i}`,
             fotografen: getRandom(photographers),
             datum: getRandomDate(),
             hoehe: String(Math.floor(Math.random() * 2000) + 800),
@@ -72,7 +67,6 @@ const generateData = (count) => {
     return data;
 };
 
-// 5. Write to your data.json file
 const TARGET_COUNT = 10000;
 const outputPath = path.join(__dirname, '../src/lib/data.json');
 
