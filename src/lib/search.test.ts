@@ -23,7 +23,6 @@ describe('Search scoring', () => {
     const engine = new SearchEngine(data);
     const res = engine.search({ q: 'apple', page: 1, pageSize: 10 });
     expect(res.items.length).toBe(2);
-    // item A1 has 'apple' in suchtext (higher weight) and should appear before B1
     expect(res.items[0].id).toBe('A1');
     expect(res.items[1].id).toBe('B1');
   });
@@ -37,7 +36,6 @@ describe('Search scoring', () => {
     const engine = new SearchEngine(data);
     const res = engine.search({ q: 'jack', page: 1, pageSize: 10 });
     expect(res.items.length).toBe(2);
-    // exact token 'jack' (J1) should outrank prefix match in 'jackson' (J2)
     expect(res.items[0].id).toBe('J1');
     expect(res.items[1].id).toBe('J2');
   });
@@ -47,12 +45,10 @@ import { searchEngine, recordAnalytics, analyticsState, sanitizeQuery, parseFlex
 
 describe('Search Engine Preprocessing & Core Logic', () => {
   test('should parse dates to unix timestamp correctly', () => {
-    // Validate date parsing helper directly
     expect(parseFlexibleDate('25.07.1952')).toBe(Date.UTC(1952, 6, 25));
   });
 
   test('should extract and strip restrictions correctly', () => {
-    // Use a small fixture to ensure restriction extraction works deterministically
     const fixture: RawMediaItem[] = [
       { suchtext: 'Some caption PUBLICATIONxINxGERxSUIxAUTxONLY', bildnummer: 'T1', fotografen: 'Photog', datum: '01.01.2000', hoehe: '100', breite: '100' }
     ];
@@ -60,17 +56,13 @@ describe('Search Engine Preprocessing & Core Logic', () => {
     const res = localEngine.search({ q: 'Some caption' });
     const item = res.items[0];
 
-    // Original text had PUBLICATIONxINxGERxSUIxAUTxONLY
     expect(item.restrictions).toContain('GER');
     expect(item.restrictions).toContain('SUI');
     expect(item.restrictions).toContain('AUT');
-
-    // The restriction string should be stripped from suchtext
     expect(item.suchtext).not.toContain('PUBLICATIONxINxGERxSUIxAUTxONLY');
   });
 
   test('should filter out German stop words during tokenization', () => {
-    // "und", "der", "die" shouldn't yield matches because they are stop words
     const res = searchEngine.search({ q: 'der' });
     expect(res.items.length).toBe(0);
   });
@@ -90,9 +82,14 @@ describe('Search Filters & Relevance', () => {
   });
 
   test('should filter by credit (photographer)', () => {
-    const res = searchEngine.search({ credit: ['IMAGO / teutopress'] });
+    const fixture: RawMediaItem[] = [
+      { suchtext: 'A stadium photo', bildnummer: 'C1', fotografen: 'Archive / teutopress', datum: '01.01.2000', hoehe: '100', breite: '100' },
+      { suchtext: 'Another photo', bildnummer: 'C2', fotografen: 'Archive / dpa', datum: '01.01.2001', hoehe: '100', breite: '100' }
+    ];
+    const engine = new SearchEngine(fixture);
+    const res = engine.search({ credit: ['Archive / teutopress'] });
     expect(res.items.length).toBeGreaterThan(0);
-    expect(res.items[0].fotografen).toBe('IMAGO / teutopress');
+    expect(res.items[0].fotografen).toBe('Archive / teutopress');
   });
 
   test('should filter by restrictions', () => {
