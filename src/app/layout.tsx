@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "IMAGO Archive - Professional Image Search & Discovery",
-  description: "Explore and search the IMAGO Archive - a comprehensive collection of professional images with advanced filtering, sorting, and discovery capabilities.",
+  title: "Media Search Lab",
+  description: "In-memory editorial image search — filters, scoring, and URL state.",
 };
 
 export default function RootLayout({
